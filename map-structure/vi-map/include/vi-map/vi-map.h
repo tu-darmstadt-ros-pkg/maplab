@@ -59,11 +59,11 @@ class MetaData;
 
 namespace map_optimization_legacy {
 class ViwlsGraph;
-class SixDofVIMapGenerator;
 }  // namespace map_optimization_legacy
 
 namespace vi_map {
 class SemanticsManager;
+class SixDofVIMapGenerator;
 
 namespace serialization {
 void deserializeMissionsAndBaseframes(
@@ -80,10 +80,10 @@ typedef std::pair<MissionId, pose_graph::VertexIdList> MissionVertexIdPair;
 
 class VIMap : public backend::ResourceMap,
               public backend::MapInterface<vi_map::VIMap> {
-  friend ::LoopClosureHandlerTest;                             // Test.
-  friend class MapConsistencyCheckTest;                        // Test.
-  friend class map_optimization_legacy::ViwlsGraph;            // Test.
-  friend class map_optimization_legacy::SixDofVIMapGenerator;  // Test.
+  friend ::LoopClosureHandlerTest;                   // Test.
+  friend class MapConsistencyCheckTest;              // Test.
+  friend class map_optimization_legacy::ViwlsGraph;  // Test.
+  friend class SixDofVIMapGenerator;                 // Test.
   friend bool checkMapConsistency(const VIMap&);
   friend class VIMapStats;
 

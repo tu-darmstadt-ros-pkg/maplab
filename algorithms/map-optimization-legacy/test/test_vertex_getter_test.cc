@@ -11,12 +11,11 @@
 #include <maplab-common/test/testing-entrypoint.h>
 #include <maplab-common/test/testing-predicates.h>
 #include <maplab-common/unique-id.h>
+#include <vi-map/6dof-test-trajectory-gen.h>
+#include <vi-map/6dof-vi-map-gen.h>
 #include <vi-map/check-map-consistency.h>
 #include <vi-map/pose-graph.h>
 #include <vi-map/vi-map.h>
-
-#include "map-optimization-legacy/test/6dof-test-trajectory-gen.h"
-#include "map-optimization-legacy/test/6dof-vi-map-gen.h"
 
 namespace map_optimization_legacy {
 
@@ -25,7 +24,7 @@ class ViwlsGraph : public ::testing::Test {
   virtual ~ViwlsGraph() {}
 
  protected:
-  SixDofVIMapGenerator vimap_gen_;
+  vi_map::SixDofVIMapGenerator vimap_gen_;
 };
 
 TEST_F(ViwlsGraph, VIMapGetRandomVertexIdTest) {
