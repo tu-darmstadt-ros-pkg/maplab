@@ -1,5 +1,5 @@
-#ifndef MAP_OPTIMIZATION_LEGACY_TEST_6DOF_POSE_GRAPH_GEN_H_
-#define MAP_OPTIMIZATION_LEGACY_TEST_6DOF_POSE_GRAPH_GEN_H_
+#ifndef VI_MAP_6DOF_POSE_GRAPH_GEN_H_
+#define VI_MAP_6DOF_POSE_GRAPH_GEN_H_
 
 #include <memory>
 #include <unordered_map>
@@ -16,7 +16,7 @@
 #include <vi-map/vertex.h>
 #include <vi-map/vi-mission.h>
 
-namespace map_optimization_legacy {
+namespace vi_map {
 
 class ViwlsGraph;
 
@@ -41,20 +41,17 @@ class SixDofPoseGraphGenerator {
   void copyDataToPosegraph();
 
   // Leave all of these as public as this is just for testing.
-  vi_map::PoseGraph posegraph_;
+  PoseGraph posegraph_;
   pose_graph::VertexIdList vertex_ids_;
-  std::unordered_map<vi_map::LandmarkId, vi_map::Landmark::Ptr> landmarks_;
-  std::unordered_map<vi_map::LandmarkId, unsigned int>
-      landmark_observation_count_;
-  std::unordered_map<vi_map::MissionId, std::shared_ptr<vi_map::VIMission>>
-      missions_;
+  std::unordered_map<LandmarkId, Landmark::Ptr> landmarks_;
+  std::unordered_map<LandmarkId, unsigned int> landmark_observation_count_;
+  std::unordered_map<MissionId, std::shared_ptr<VIMission>> missions_;
   AlignedUnorderedMap<pose_graph::VertexId, Eigen::Vector3d>
       true_vertex_positions_;
   AlignedUnorderedMap<pose_graph::VertexId, Eigen::Quaterniond>
       true_vertex_rotations_;
-  AlignedUnorderedMap<vi_map::LandmarkId, Eigen::Vector3d>
-      true_landmark_positions_;
-  AlignedUnorderedMap<vi_map::LandmarkId, aslam::VisualFrame::DescriptorsT>
+  AlignedUnorderedMap<LandmarkId, Eigen::Vector3d> true_landmark_positions_;
+  AlignedUnorderedMap<LandmarkId, aslam::VisualFrame::DescriptorsT>
       landmark_descriptors_;
 
   aslam::NCamera::Ptr cameras_;
@@ -110,6 +107,6 @@ class SixDofPoseGraphGenerator {
   unsigned int id_counter_;
 };
 
-};  // namespace map_optimization_legacy
+};  // namespace vi_map
 
-#endif  // MAP_OPTIMIZATION_LEGACY_TEST_6DOF_POSE_GRAPH_GEN_H_
+#endif  // VI_MAP_6DOF_POSE_GRAPH_GEN_H_

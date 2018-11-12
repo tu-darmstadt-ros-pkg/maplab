@@ -1,4 +1,4 @@
-#include "map-optimization-legacy/test/6dof-pose-graph-gen.h"
+#include "vi-map/6dof-pose-graph-gen.h"
 
 #include <cmath>
 #include <memory>
@@ -23,9 +23,9 @@
 #include <vi-map/unique-id.h>
 #include <vi-map/viwls-edge.h>
 
-#include "map-optimization-legacy/test/6dof-test-trajectory-gen.h"
+#include "vi-map/6dof-test-trajectory-gen.h"
 
-namespace map_optimization_legacy {
+namespace vi_map {
 
 typedef aslam::FisheyeDistortion DistortionType;
 typedef aslam::PinholeCamera CameraType;
@@ -79,7 +79,7 @@ void SixDofPoseGraphGenerator::copyDataFromPosegraph() {
 
   unsigned int col_idx = 0;
   for (pose_graph::VertexId vertex_id : all_vertex_ids) {
-    const vi_map::Vertex* ba_vertex = dynamic_cast<const vi_map::Vertex*>(
+    const Vertex* ba_vertex = dynamic_cast<const Vertex*>(
         posegraph_.getVertexPtr(vertex_id));  // NOLINT
     CHECK_NOTNULL(ba_vertex);
 
@@ -109,7 +109,7 @@ void SixDofPoseGraphGenerator::copyDataFromPosegraph() {
 void SixDofPoseGraphGenerator::copyDataToPosegraph() {
   for (const VertexIdRotationMap::value_type& vertex_id_to_idx :
        vertex_id_to_pose_idx_) {
-    vi_map::Vertex* ba_vertex = dynamic_cast<vi_map::Vertex*>( // NOLINT
+    Vertex* ba_vertex = dynamic_cast<Vertex*>(  // NOLINT
         posegraph_.getVertexPtrMutable(vertex_id_to_idx.first));
     CHECK_NOTNULL(ba_vertex);
 
@@ -157,9 +157,8 @@ void SixDofPoseGraphGenerator::constructCamera() {
   T_C_I_vector.push_back(T_C_I);
   aslam::NCameraId n_camera_id;
   common::generateId(&n_camera_id);
-  cameras_.reset(
-      new aslam::NCamera(
-          n_camera_id, T_C_I_vector, camera_vector, "Test camera rig"));
+  cameras_.reset(new aslam::NCamera(
+      n_camera_id, T_C_I_vector, camera_vector, "Test camera rig"));
 }
 
 void SixDofPoseGraphGenerator::generatePathAndLandmarks() {
@@ -182,8 +181,8 @@ void SixDofPoseGraphGenerator::generatePathAndLandmarks() {
   // kept on a single map, as agreed they should be kept as continuous
   // memory in one of the vertices.
   for (int i = 0; i < G_landmarks.cols(); ++i) {
-    vi_map::Landmark::Ptr landmark_ptr(new vi_map::Landmark);
-    vi_map::LandmarkId landmark_id;
+    Landmark::Ptr landmark_ptr(new Landmark);
+    LandmarkId landmark_id;
     generateIdFromInt(id_counter_, &landmark_id);
     landmark_ptr->setId(landmark_id);
     ++id_counter_;
@@ -226,10 +225,10 @@ void SixDofPoseGraphGenerator::fillPosegraph(
   LOG(INFO) << num_of_measurements_per_edge << " measurements per edge";
 
   // Create a single mission for all the keyframes/landmarks.
-  vi_map::MissionId mission_id;
+  MissionId mission_id;
   generateIdFromInt(id_counter_, &mission_id);
   ++id_counter_;
-  std::shared_ptr<vi_map::VIMission> mission_ptr(new vi_map::VIMission);
+  std::shared_ptr<VIMission> mission_ptr(new VIMission);
   mission_ptr->setId(mission_id);
   missions_.insert(std::make_pair(mission_id, mission_ptr));
 
@@ -257,14 +256,13 @@ void SixDofPoseGraphGenerator::fillPosegraph(
                  << std::endl;
 
     Aligned<std::vector, Eigen::Vector2d> visible_points;
-    std::vector<vi_map::LandmarkId> landmark_ids;
+    std::vector<LandmarkId> landmark_ids;
     // For each landmark, verify if it's visible from the current pose.
-    typedef std::unordered_map<vi_map::LandmarkId,
-                               vi_map::Landmark::Ptr>::iterator it_type;
+    typedef std::unordered_map<LandmarkId, Landmark::Ptr>::iterator it_type;
     unsigned int counter = 0;
     for (it_type iterator = landmarks_.begin(); iterator != landmarks_.end();
          ++iterator) {
-      vi_map::Landmark::Ptr landmark_ptr = iterator->second;
+      Landmark::Ptr landmark_ptr = iterator->second;
 
       Eigen::Vector3d G_p_fi = landmark_ptr->get_p_B();
       Eigen::Vector3d C_p_fi = G_T_C.inverse() * G_p_fi;
@@ -303,10 +301,10 @@ void SixDofPoseGraphGenerator::fillPosegraph(
     descriptors.resize(48, visible_points.size());
     for (size_t landmark_index = 0; landmark_index < landmark_ids.size();
          ++landmark_index) {
-      const vi_map::LandmarkId& landmark_id = landmark_ids[landmark_index];
+      const LandmarkId& landmark_id = landmark_ids[landmark_index];
       typename AlignedUnorderedMap<
-          vi_map::LandmarkId, aslam::VisualFrame::DescriptorsT>::const_iterator
-          it = landmark_descriptors_.find(landmark_id);
+          LandmarkId, aslam::VisualFrame::DescriptorsT>::const_iterator it =
+          landmark_descriptors_.find(landmark_id);
       CHECK(it != landmark_descriptors_.end());
       aslam::VisualFrame::DescriptorsT descriptor = it->second;
       constexpr int kNumBitsToPerturb = 30;
@@ -351,7 +349,7 @@ void SixDofPoseGraphGenerator::fillPosegraph(
     }
     G_q_I.normalize();
 
-    vi_map::Vertex* ba_vertex = dynamic_cast<vi_map::Vertex*>( // NOLINT
+    Vertex* ba_vertex = dynamic_cast<Vertex*>(  // NOLINT
         posegraph_.getVertexPtrMutable(vertex_ids_[vertex_idx]));
     CHECK_NOTNULL(ba_vertex);
     ba_vertex->set_q_M_I(G_q_I);
@@ -405,11 +403,10 @@ void SixDofPoseGraphGenerator::corruptLandmarkPositions(double sigma) {
   std::normal_distribution<> dis(0, sigma);
   Eigen::Vector3d noise_vector;
 
-  typedef std::unordered_map<vi_map::LandmarkId,
-                             vi_map::Landmark::Ptr>::iterator it_type;
+  typedef std::unordered_map<LandmarkId, Landmark::Ptr>::iterator it_type;
   for (it_type iterator = landmarks_.begin(); iterator != landmarks_.end();
        ++iterator) {
-    vi_map::Landmark::Ptr landmark_ptr = iterator->second;
+    Landmark::Ptr landmark_ptr = iterator->second;
 
     noise_vector << dis(gen), dis(gen), dis(gen);
     Eigen::Vector3d G_p_fi = landmark_ptr->get_p_B();
@@ -427,15 +424,15 @@ void SixDofPoseGraphGenerator::addInertialResidualBlocks(
   CHECK(!all_edge_ids.empty()) << "No edges on the posegraph.";
 
   for (pose_graph::EdgeId edge_id : all_edge_ids) {
-    const vi_map::ViwlsEdge* ba_edge = dynamic_cast<const vi_map::ViwlsEdge*>(
+    const ViwlsEdge* ba_edge = dynamic_cast<const ViwlsEdge*>(
         posegraph_.getEdgePtr(edge_id));  // NOLINT
     CHECK_NOTNULL(ba_edge);
 
-    vi_map::Vertex* vertex_from = dynamic_cast<vi_map::Vertex*>( // NOLINT
+    Vertex* vertex_from = dynamic_cast<Vertex*>(  // NOLINT
         posegraph_.getVertexPtrMutable(ba_edge->from()));
     CHECK_NOTNULL(vertex_from);
 
-    vi_map::Vertex* vertex_to = dynamic_cast<vi_map::Vertex*>( // NOLINT
+    Vertex* vertex_to = dynamic_cast<Vertex*>(  // NOLINT
         posegraph_.getVertexPtrMutable(ba_edge->to()));
     CHECK_NOTNULL(vertex_to);
 
@@ -451,7 +448,7 @@ void SixDofPoseGraphGenerator::addInertialResidualBlocks(
 
     // Noise and bias sigmas can't be zero as it will yield infinite
     // values in information matrix that is used by visual error term.
-    vi_map::ImuSigmas& imu_sigmas = settings_.imu_sigmas;
+    ImuSigmas& imu_sigmas = settings_.imu_sigmas;
     if (imu_sigmas.gyro_noise_density == 0.0) {
       imu_sigmas.gyro_noise_density = 1e-4;
     }
@@ -507,7 +504,7 @@ void SixDofPoseGraphGenerator::fixFirstVertices(
   CHECK_GT(num_of_fixed_vertices, 0u) << "You can't fix zero vertices.";
   LOG(INFO) << "Fixing " << num_of_fixed_vertices << " first vertices";
   for (unsigned int i = 0; i <= (num_of_fixed_vertices - 1); ++i) {
-    vi_map::Vertex* vertex = dynamic_cast<vi_map::Vertex*>( // NOLINT
+    Vertex* vertex = dynamic_cast<Vertex*>(  // NOLINT
         posegraph_.getVertexPtrMutable(vertex_ids_[i]));
     CHECK(vertex) << "Couldn't cast to BA vertex type.";
 
@@ -536,7 +533,7 @@ void SixDofPoseGraphGenerator::addVisualResidualBlocks(
       new ceres_error_terms::JplQuaternionParameterization;
 
   for (pose_graph::VertexId vertex_id : all_vertex_ids) {
-    vi_map::Vertex* ba_vertex = dynamic_cast<vi_map::Vertex*>( // NOLINT
+    Vertex* ba_vertex = dynamic_cast<Vertex*>(  // NOLINT
         posegraph_.getVertexPtrMutable(vertex_id));
     CHECK_NOTNULL(ba_vertex);
 
@@ -547,7 +544,7 @@ void SixDofPoseGraphGenerator::addVisualResidualBlocks(
             .getKeypointMeasurementUncertainties();
 
     const std::shared_ptr<CameraType> camera_ptr =
-        std::dynamic_pointer_cast<CameraType>( // NOLINT
+        std::dynamic_pointer_cast<CameraType>(  // NOLINT
             ba_vertex->getCamera(kVisualFrameIndex));
     CHECK(camera_ptr != nullptr);
 
@@ -562,8 +559,8 @@ void SixDofPoseGraphGenerator::addVisualResidualBlocks(
               .find(ba_vertex->getObservedLandmarkId(kVisualFrameIndex, i))
               ->second >= 2) {
         ceres::CostFunction* visual_term_cost =
-            new ceres_error_terms::VisualReprojectionError<CameraType,
-                                                           DistortionType>(
+            new ceres_error_terms::VisualReprojectionError<
+                CameraType, DistortionType>(
                 image_points_distorted.col(i), image_points_uncertainties(i),
                 ceres_error_terms::visual::VisualErrorType::kLocalMission,
                 camera_ptr.get());
@@ -635,4 +632,4 @@ void SixDofPoseGraphGenerator::solve(int max_num_of_iters) {
   copyDataToPosegraph();
 }
 
-};  // namespace map_optimization_legacy
+};  // namespace vi_map

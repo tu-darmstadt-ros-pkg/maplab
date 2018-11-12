@@ -1,15 +1,14 @@
-#ifndef MAP_OPTIMIZATION_LEGACY_TEST_6DOF_TEST_TRAJECTORY_GEN_H_
-#define MAP_OPTIMIZATION_LEGACY_TEST_6DOF_TEST_TRAJECTORY_GEN_H_
+#ifndef VI_MAP_6DOF_TEST_TRAJECTORY_GEN_H_
+#define VI_MAP_6DOF_TEST_TRAJECTORY_GEN_H_
 
 #include <memory>
 #include <string>
 
 #include <Eigen/Core>
-
 #include <imu-integrator/imu-integrator.h>
 #include <simulation/generic-path-generator.h>
 
-namespace map_optimization_legacy {
+namespace vi_map {
 
 class SixDofTestTrajectoryGenerator {
  public:
@@ -73,6 +72,6 @@ class SixDofTestTrajectoryGenerator {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
-}  //  namespace map_optimization_legacy
+}  //  namespace vi_map
 
-#endif  // MAP_OPTIMIZATION_LEGACY_TEST_6DOF_TEST_TRAJECTORY_GEN_H_
+#endif  // VI_MAP_6DOF_TEST_TRAJECTORY_GEN_H_

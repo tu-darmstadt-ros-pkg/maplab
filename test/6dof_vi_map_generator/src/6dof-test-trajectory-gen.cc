@@ -1,13 +1,13 @@
-#include "map-optimization-legacy/test/6dof-test-trajectory-gen.h"
+#include "vi-map/6dof-test-trajectory-gen.h"
 
 #include <fstream>  // NOLINT
 
 #include <glog/logging.h>
 #include <maplab-common/quaternion-math.h>
 
-#include "map-optimization-legacy/test/vi-optimization-test-helpers.h"
+#include "vi-map/vi-optimization-test-helpers.h"
 
-namespace map_optimization_legacy {
+namespace vi_map {
 
 SixDofTestTrajectoryGenerator::SixDofTestTrajectoryGenerator(
     const test_trajectory_gen::PathAndLandmarkSettings& settings)
@@ -18,7 +18,7 @@ SixDofTestTrajectoryGenerator::SixDofTestTrajectoryGenerator(
   test_trajectory_gen::PathAndLandmarkSettings settings_without_imu_noise =
       settings;
 
-  vi_map::ImuSigmas& imu_sigmas = settings_without_imu_noise.imu_sigmas;
+  ImuSigmas& imu_sigmas = settings_without_imu_noise.imu_sigmas;
   setImuSigmasZero(&imu_sigmas);
   generator_ = std::shared_ptr<test_trajectory_gen::GenericPathGenerator>(
       new test_trajectory_gen::GenericPathGenerator(
@@ -34,11 +34,11 @@ void SixDofTestTrajectoryGenerator::generate6DofPath() {
   Eigen::Matrix<double, 2 * imu_integrator::kImuReadingSize, 1>
       debiased_imu_readings;
   Eigen::Matrix<double, imu_integrator::kStateSize, 1> next_state;
-  Eigen::Matrix<double, imu_integrator::kErrorStateSize,
-                imu_integrator::kErrorStateSize>
+  Eigen::Matrix<
+      double, imu_integrator::kErrorStateSize, imu_integrator::kErrorStateSize>
       next_phi;
-  Eigen::Matrix<double, imu_integrator::kErrorStateSize,
-                imu_integrator::kErrorStateSize>
+  Eigen::Matrix<
+      double, imu_integrator::kErrorStateSize, imu_integrator::kErrorStateSize>
       next_cov;
 
   // -----------------------------------------------------------------------
@@ -194,14 +194,12 @@ void SixDofTestTrajectoryGenerator::addNoiseToImuData(
     getRandomVector3d(&gen, &dis, &gyro_noise_temp);
     getRandomVector3d(&gen, &dis, &acc_noise_temp);
     imu_data->block<3, 1>(0, idx) +=
-        acc_bias +
-        acc_noise_temp * settings_.imu_sigmas.acc_noise_density /
-            sqrt(settings_.sampling_time_second);
+        acc_bias + acc_noise_temp * settings_.imu_sigmas.acc_noise_density /
+                       sqrt(settings_.sampling_time_second);
 
     imu_data->block<3, 1>(3, idx) +=
-        gyro_bias +
-        gyro_noise_temp * settings_.imu_sigmas.gyro_noise_density /
-            sqrt(settings_.sampling_time_second);
+        gyro_bias + gyro_noise_temp * settings_.imu_sigmas.gyro_noise_density /
+                        sqrt(settings_.sampling_time_second);
     true_acc_bias_.col(idx) = acc_bias;
     true_gyro_bias_.col(idx) = gyro_bias;
 
@@ -222,11 +220,11 @@ Eigen::Quaterniond SixDofTestTrajectoryGenerator::integrateQuaternion(
         debiased_imu_readings) const {
   Eigen::Matrix<double, imu_integrator::kStateSize, 1> current_state;
   Eigen::Matrix<double, imu_integrator::kStateSize, 1> next_state;
-  Eigen::Matrix<double, imu_integrator::kErrorStateSize,
-                imu_integrator::kErrorStateSize>
+  Eigen::Matrix<
+      double, imu_integrator::kErrorStateSize, imu_integrator::kErrorStateSize>
       next_phi;
-  Eigen::Matrix<double, imu_integrator::kErrorStateSize,
-                imu_integrator::kErrorStateSize>
+  Eigen::Matrix<
+      double, imu_integrator::kErrorStateSize, imu_integrator::kErrorStateSize>
       next_cov;
 
   current_state.setZero();
@@ -325,4 +323,4 @@ void SixDofTestTrajectoryGenerator::getGroundTruthTransformations(
   CHECK_EQ(num_samples, T_G_Bs->size());
 }
 
-}  // namespace map_optimization_legacy
+}  // namespace vi_map

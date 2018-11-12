@@ -1,4 +1,4 @@
-#include "map-optimization-legacy/test/6dof-vi-map-gen.h"
+#include "vi-map/6dof-vi-map-gen.h"
 
 #include <cmath>
 #include <memory>
@@ -13,11 +13,11 @@
 #include <vi-map/vertex.h>
 #include <vi-map/vi-map.h>
 
-#include "map-optimization-legacy/test/6dof-pose-graph-gen.h"
-#include "map-optimization-legacy/test/6dof-test-trajectory-gen.h"
-#include "map-optimization-legacy/test/vi-optimization-test-helpers.h"
+#include "vi-map/6dof-pose-graph-gen.h"
+#include "vi-map/6dof-test-trajectory-gen.h"
+#include "vi-map/vi-optimization-test-helpers.h"
 
-namespace map_optimization_legacy {
+namespace vi_map {
 
 void SixDofVIMapGenerator::generateVIMap() {
   graph_gen_.constructCamera();
@@ -45,10 +45,10 @@ void SixDofVIMapGenerator::generateVIMap() {
   CHECK_EQ(kNumOfVertices, all_vertex_ids.size());
   CHECK_EQ(kNumOfVertices - 1, all_edge_ids.size());
 
-  vi_map::MissionId mission_id;
+  MissionId mission_id;
   common::generateId(&mission_id);
 
-  const vi_map::Vertex* vertex_ptr = static_cast<const vi_map::Vertex*>(
+  const Vertex* vertex_ptr = static_cast<const Vertex*>(
       graph_gen_.posegraph_.getVertexPtr(all_vertex_ids[0]));
 
   pose::Transformation T_G_M;
@@ -58,18 +58,18 @@ void SixDofVIMapGenerator::generateVIMap() {
 
   vi_map_.addNewMissionWithBaseframe(
       mission_id, T_G_M, T_G_M_covariance, graph_gen_.cameras_,
-      vi_map::Mission::BackBone::kViwls);
+      Mission::BackBone::kViwls);
 
   constexpr char kImuHardwareId[] = "imu0";
-  vi_map::SensorId imu_sensor_id;
+  SensorId imu_sensor_id;
   common::generateId(&imu_sensor_id);
-  vi_map::Imu::UniquePtr imu_sensor = aligned_unique<vi_map::Imu>(
+  Imu::UniquePtr imu_sensor = aligned_unique<Imu>(
       imu_sensor_id, static_cast<std::string>(kImuHardwareId));
   imu_sensor->setImuSigmas(graph_gen_.settings_.imu_sigmas);
   vi_map_.getSensorManager().addSensor(std::move(imu_sensor), mission_id);
 
   for (pose_graph::VertexId& vertex_id : all_vertex_ids) {
-    vi_map::Vertex* vertex_ptr = static_cast<vi_map::Vertex*>(
+    Vertex* vertex_ptr = static_cast<Vertex*>(
         graph_gen_.posegraph_.getVertexPtrMutable(vertex_id));
     CHECK_NOTNULL(vertex_ptr);
 
@@ -77,34 +77,33 @@ void SixDofVIMapGenerator::generateVIMap() {
     pose_graph::EdgeIdSet incoming_edges;
     vertex_ptr->getIncomingEdges(&incoming_edges);
 
-    vi_map::Vertex::UniquePtr vertex_copy_ptr(new vi_map::Vertex(*vertex_ptr));
+    Vertex::UniquePtr vertex_copy_ptr(new Vertex(*vertex_ptr));
     vi_map_.addVertex(std::move(vertex_copy_ptr));
 
     if (incoming_edges.empty()) {
-      vi_map::VIMission& mission = vi_map_.getMission(mission_id);
+      VIMission& mission = vi_map_.getMission(mission_id);
       mission.setRootVertexId(vertex_id);
     }
   }
   CHECK_EQ(vi_map_.numVertices(), kNumOfVertices);
 
   for (const pose_graph::EdgeId& edge_id : all_edge_ids) {
-    vi_map::ViwlsEdge* edge_ptr = static_cast<vi_map::ViwlsEdge*>(
+    ViwlsEdge* edge_ptr = static_cast<ViwlsEdge*>(
         graph_gen_.posegraph_.getEdgePtrMutable(edge_id));
     CHECK_NOTNULL(edge_ptr);
 
-    vi_map::ViwlsEdge::UniquePtr edge_copy_ptr(
-        new vi_map::ViwlsEdge(*edge_ptr));
+    ViwlsEdge::UniquePtr edge_copy_ptr(new ViwlsEdge(*edge_ptr));
     vi_map_.addEdge(std::move(edge_copy_ptr));
   }
   CHECK_EQ(vi_map_.numEdges(), kNumOfVertices - 1);
 
   // Add landmarks to the VIMap.
-  for (const std::pair<vi_map::LandmarkId, vi_map::Landmark::Ptr>&
-           landmark_pair : graph_gen_.landmarks_) {
+  for (const std::pair<LandmarkId, Landmark::Ptr>& landmark_pair :
+       graph_gen_.landmarks_) {
     bool store_is_set = false;
     pose_graph::VertexId vertex_id_to_store;
 
-    vi_map::Landmark& landmark = *CHECK_NOTNULL(landmark_pair.second.get());
+    Landmark& landmark = *CHECK_NOTNULL(landmark_pair.second.get());
 
     if (!landmark_pair.first.isValid()) {
       continue;
@@ -115,8 +114,7 @@ void SixDofVIMapGenerator::generateVIMap() {
       continue;
     }
     // Get the first observing vertex for this landmark.
-    for (const vi_map::KeypointIdentifier& backlink :
-         landmark.getObservations()) {
+    for (const KeypointIdentifier& backlink : landmark.getObservations()) {
       if (!store_is_set) {
         vertex_id_to_store = backlink.frame_id.vertex_id;
         store_is_set = true;
@@ -154,4 +152,4 @@ Eigen::Vector4d SixDofVIMapGenerator::getTrueVertexRotation(
     const pose_graph::VertexId& vertex_id) const {
   return graph_gen_.true_vertex_rotations_.at(vertex_id).coeffs();
 }
-}  // namespace map_optimization_legacy
+}  // namespace vi_map

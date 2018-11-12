@@ -1,12 +1,12 @@
-#ifndef MAP_OPTIMIZATION_LEGACY_TEST_6DOF_VI_MAP_GEN_H_
-#define MAP_OPTIMIZATION_LEGACY_TEST_6DOF_VI_MAP_GEN_H_
+#ifndef VI_MAP_6DOF_VI_MAP_GEN_H_
+#define VI_MAP_6DOF_VI_MAP_GEN_H_
 
 #include <vi-map/vi-map.h>
 
-#include "map-optimization-legacy/test/6dof-pose-graph-gen.h"
-#include "map-optimization-legacy/test/6dof-test-trajectory-gen.h"
+#include "vi-map/6dof-pose-graph-gen.h"
+#include "vi-map/6dof-test-trajectory-gen.h"
 
-namespace map_optimization_legacy {
+namespace vi_map {
 
 class ViwlsGraph;
 
@@ -29,6 +29,6 @@ class SixDofVIMapGenerator {
   SixDofPoseGraphGenerator graph_gen_;
 };
 
-};  // namespace map_optimization_legacy
+};  // namespace vi_map
 
-#endif  // MAP_OPTIMIZATION_LEGACY_TEST_6DOF_VI_MAP_GEN_H_
+#endif  // VI_MAP_6DOF_VI_MAP_GEN_H_
