@@ -7,6 +7,7 @@
 
 #include <Eigen/Core>
 #include <aslam/common/pose-types.h>
+#include <aslam/common/timer.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 #include <landmark-triangulation/pose-interpolator.h>
@@ -21,29 +22,19 @@
 
 #include "depth-integration/depth-integration.h"
 
+DEFINE_bool(
+    dense_depth_map_integration_enable_rolling_shutter_compensation, true,
+    "If enabled, the integrator will use the line-delay property of the camera "
+    "to compensate for the rolling shutter effect. This works for both "
+    "vision-based depth maps (type: PinholeCamera, line: row) and 3D lidar "
+    "depth maps (type: Camera3DLidar, line: column).");
+
 namespace depth_integration {
-
-void integrateAllDepthMapResourcesOfType(
+void integrateAllFrameDepthMapResourcesOfTypeImpl(
     const vi_map::MissionIdList& mission_ids,
     const backend::ResourceType& input_resource_type,
     const vi_map::VIMap& vi_map,
-    DepthMapIntegrationFunction integration_function) {
-  CHECK(integration_function);
-
-  // Integrate all frame resources.
-  integrateAllFrameDepthMapResourcesOfType(
-      mission_ids, input_resource_type, vi_map, integration_function);
-
-  // Integrate all optional sensor resources.
-  integrateAllOptionalSensorDepthMapResourcesOfType(
-      mission_ids, input_resource_type, vi_map, integration_function);
-}
-
-void integrateAllFrameDepthMapResourcesOfType(
-    const vi_map::MissionIdList& mission_ids,
-    const backend::ResourceType& input_resource_type,
-    const vi_map::VIMap& vi_map,
-    DepthMapIntegrationFunction integration_function) {
+    DepthMapUndistortionAndIntegrationFunction integration_function) {
   CHECK(integration_function);
   CHECK_GT(kSupportedDepthMapInputTypes.count(input_resource_type), 0u)
       << "This depth type is not supported! type: "
@@ -138,8 +129,10 @@ void integrateAllFrameDepthMapResourcesOfType(
             }
 
             // Integrate with or without intensity information.
+            aslam::TransformationVector T_G_C_vec;
+            T_G_C_vec.push_back(T_G_C);
             integration_function(
-                T_G_C, depth_map, image, n_camera.getCamera(frame_idx));
+                T_G_C_vec, depth_map, image, n_camera.getCamera(frame_idx));
           } break;
           default:
             LOG(FATAL) << "This depth type is not supported! type: "
@@ -151,11 +144,41 @@ void integrateAllFrameDepthMapResourcesOfType(
   }
 }
 
-void integrateAllOptionalSensorDepthMapResourcesOfType(
+template <>
+void integrateAllFrameDepthMapResourcesOfType(
     const vi_map::MissionIdList& mission_ids,
     const backend::ResourceType& input_resource_type,
     const vi_map::VIMap& vi_map,
     DepthMapIntegrationFunction integration_function) {
+  auto undistortion_integration_function =
+      [&integration_function](
+          const aslam::TransformationVector& T_G_C_vec,
+          const cv::Mat& depth_map, const cv::Mat& intensities,
+          const aslam::Camera& camera) {
+        CHECK_GE(T_G_C_vec.size(), 1u);
+        const aslam::Transformation& T_G_C = T_G_C_vec.at(0);
+        integration_function(T_G_C, depth_map, intensities, camera);
+      };
+  integrateAllFrameDepthMapResourcesOfTypeImpl(
+      mission_ids, input_resource_type, vi_map,
+      undistortion_integration_function);
+}
+
+template <>
+void integrateAllFrameDepthMapResourcesOfType(
+    const vi_map::MissionIdList& mission_ids,
+    const backend::ResourceType& input_resource_type,
+    const vi_map::VIMap& vi_map,
+    DepthMapUndistortionAndIntegrationFunction integration_function) {
+  integrateAllFrameDepthMapResourcesOfTypeImpl(
+      mission_ids, input_resource_type, vi_map, integration_function);
+}
+
+void integrateAllOptionalSensorDepthMapResourcesOfTypeImpl(
+    const vi_map::MissionIdList& mission_ids,
+    const backend::ResourceType& input_resource_type,
+    const vi_map::VIMap& vi_map,
+    DepthMapUndistortionAndIntegrationFunction integration_function) {
   CHECK(integration_function);
   CHECK_GT(kSupportedDepthMapInputTypes.count(input_resource_type), 0u)
       << "This depth type is not supported! Type: "
@@ -167,6 +190,12 @@ void integrateAllOptionalSensorDepthMapResourcesOfType(
   if (FLAGS_dense_depth_integrator_enable_sigint_breaker) {
     sigint_breaker.reset(new common::SigintBreaker);
   }
+
+  const int64_t timestamp_shift_ns =
+      FLAGS_dense_depth_integrator_timeshift_resource_to_imu_ns;
+
+  const bool enable_rolling_shutter_compensation =
+      FLAGS_dense_depth_map_integration_enable_rolling_shutter_compensation;
 
   // Start integration.
   for (const vi_map::MissionId& mission_id : mission_ids) {
@@ -212,7 +241,6 @@ void integrateAllOptionalSensorDepthMapResourcesOfType(
          *sensor_id_to_res_id_map) {
       const backend::TemporalResourceIdBuffer& resource_buffer =
           sensor_to_res_ids.second;
-
       const aslam::SensorId& sensor_id = sensor_to_res_ids.first;
 
       // Get transformation between reference (e.g. IMU) and sensor.
@@ -232,6 +260,16 @@ void integrateAllOptionalSensorDepthMapResourcesOfType(
       CHECK_EQ(ncamera_ptr->getNumCameras(), 1u);
       camera_ptr = ncamera_ptr->getCameraShared(0);
 
+      // Rolling shutter compensation.
+      uint32_t num_lines_per_depth_map = 1u;
+      int64_t line_delay_ns = 0;
+      bool is_rolling_shutter = false;
+      if (enable_rolling_shutter_compensation) {
+        num_lines_per_depth_map = camera_ptr->getNumberOfLines();
+        line_delay_ns = camera_ptr->getLineDelayNanoSeconds();
+        is_rolling_shutter = num_lines_per_depth_map > 1u;
+      }
+
       // Need to update the sensor extrinsics, since ncameras have an
       // additiona extrinsics between ncamera frame and camera frame.
       const aslam::Transformation T_Cn_C = ncamera_ptr->get_T_C_B(0).inverse();
@@ -239,116 +277,171 @@ void integrateAllOptionalSensorDepthMapResourcesOfType(
 
       const size_t num_resources = resource_buffer.size();
       VLOG(1) << "Sensor " << sensor_id.shortHex() << " has " << num_resources
-              << " such resources.";
+              << " such resources. Rolling shutter compensation: "
+              << (is_rolling_shutter ? "ON" : "OFF")
+              << " Number of poses interpolated per resource: "
+              << num_lines_per_depth_map;
 
       // Collect all timestamps that need to be interpolated.
+      const uint32_t total_number_of_poses =
+          num_resources * num_lines_per_depth_map;
       Eigen::Matrix<int64_t, 1, Eigen::Dynamic> resource_timestamps(
-          num_resources);
-      size_t idx = 0u;
+          total_number_of_poses);
+      {
+        size_t idx = 0u;
+        for (const std::pair<int64_t, backend::ResourceId>&
+                 stamped_resource_id : resource_buffer) {
+          int64_t timestamp_resource_ns =
+              stamped_resource_id.first + timestamp_shift_ns;
 
-      const int64_t timestamp_shift_ns =
-          FLAGS_dense_depth_integrator_timeshift_resource_to_imu_ns;
-
-      for (const std::pair<int64_t, backend::ResourceId>& stamped_resource_id :
-           resource_buffer) {
-        const int64_t timestamp_resource_ns =
-            stamped_resource_id.first + timestamp_shift_ns;
-
-        // If the resource timestamp does not lie within the min and max
-        // timestamp of the vertices, we cannot interpolate the position. To
-        // keep this efficient, we simply replace timestamps outside the range
-        // with the min or max. Since their transformation will not be used
-        // later, that's fine.
-        resource_timestamps[idx] = std::max(
-            min_timestamp_ns,
-            std::min(max_timestamp_ns, timestamp_resource_ns));
-
-        ++idx;
+          for (uint32_t line_idx = 0; line_idx < num_lines_per_depth_map;
+               ++line_idx, ++idx, timestamp_resource_ns += line_delay_ns) {
+            // If the resource timestamp does not lie within the min and max
+            // timestamp of the vertices, we cannot interpolate the position. To
+            // keep this efficient, we simply replace timestamps outside the
+            // range with the min or max. Since their transformation will not be
+            // used later, that's fine.
+            resource_timestamps[idx] = std::max(
+                min_timestamp_ns,
+                std::min(max_timestamp_ns, timestamp_resource_ns));
+          }
+        }
+        CHECK_EQ(idx, total_number_of_poses);
       }
 
       // Interpolate poses for every resource.
       aslam::TransformationVector poses_M_B;
-      pose_interpolator.getPosesAtTime(
-          vi_map, mission_id, resource_timestamps, &poses_M_B);
-      CHECK_EQ(static_cast<int>(poses_M_B.size()), resource_timestamps.size());
-      CHECK_EQ(poses_M_B.size(), resource_buffer.size());
+      {
+        VLOG(1) << "Interpolate all poses for this resource type...";
+        timing::TimerImpl timer_interpolation(
+            "depth_map_integrator::pose_interpolation");
+
+        pose_interpolator.getPosesAtTime(
+            vi_map, mission_id, resource_timestamps, &poses_M_B);
+        CHECK_EQ(static_cast<int>(poses_M_B.size()), total_number_of_poses);
+        CHECK_EQ(poses_M_B.size(), total_number_of_poses);
+        VLOG(1) << "Done, interpolation took: " << timer_interpolation.Stop()
+                << "s";
+      }
 
       // Retrieve and integrate all resources.
-      idx = 0u;
-      common::ProgressBar progress_bar(resource_buffer.size());
-      for (const std::pair<int64_t, backend::ResourceId>& stamped_resource_id :
-           resource_buffer) {
-        progress_bar.increment();
+      {
+        size_t idx = 0u;
+        common::ProgressBar progress_bar(resource_buffer.size());
+        for (const std::pair<int64_t, backend::ResourceId>&
+                 stamped_resource_id : resource_buffer) {
+          CHECK_LT(idx, total_number_of_poses);
+          progress_bar.increment();
 
-        if (FLAGS_dense_depth_integrator_enable_sigint_breaker) {
-          CHECK(sigint_breaker);
-          if (sigint_breaker->isBreakRequested()) {
-            LOG(WARNING) << "Depth integration has been aborted by the user!";
-            return;
+          if (FLAGS_dense_depth_integrator_enable_sigint_breaker) {
+            CHECK(sigint_breaker);
+            if (sigint_breaker->isBreakRequested()) {
+              LOG(WARNING) << "Depth integration has been aborted by the user!";
+              return;
+            }
           }
-        }
 
-        const aslam::Transformation& T_M_B = poses_M_B[idx];
-        const aslam::Transformation T_G_S = T_G_M * T_M_B * T_B_C;
-        ++idx;
+          const int64_t timestamp_ns = stamped_resource_id.first;
+          const int64_t corrected_timestamp_ns = resource_timestamps[idx];
+          timestamp_ns + timestamp_shift_ns;
 
-        const int64_t timestamp_ns = stamped_resource_id.first;
+          // Extract the poses that belong to this depth resource.
+          aslam::TransformationVector T_G_C_vec(num_lines_per_depth_map);
+          for (uint32_t line_idx = 0u; line_idx < num_lines_per_depth_map;
+               ++line_idx, ++idx) {
+            CHECK_LT(idx, total_number_of_poses);
+            const aslam::Transformation& T_M_B = poses_M_B[idx];
+            T_G_C_vec[line_idx] = T_G_M * T_M_B * T_B_C;
+          }
 
-        // If the resource timestamp does not lie within the min and max
-        // timestamp of the vertices, we cannot interpolate the position.
-        if (timestamp_ns < min_timestamp_ns ||
-            timestamp_ns > max_timestamp_ns) {
-          LOG(WARNING) << "The optional depth resource at " << timestamp_ns
-                       << "ns is outside of the time range of the pose graph, "
-                       << "skipping.";
-          continue;
-        }
+          // If the resource timestamp does not lie within the min and max
+          // timestamp of the vertices, we cannot interpolate the position.
+          if (corrected_timestamp_ns < min_timestamp_ns ||
+              corrected_timestamp_ns > max_timestamp_ns) {
+            LOG(WARNING)
+                << "The optional depth resource at " << timestamp_ns
+                << "ns (corrected: " << corrected_timestamp_ns
+                << "ns)is outside of the time range of the pose graph, "
+                << "skipping.";
+            continue;
+          }
 
-        switch (input_resource_type) {
-          case backend::ResourceType::kRawDepthMap:
-          // Fall through intended.
-          case backend::ResourceType::kOptimizedDepthMap: {
-            CHECK(camera_ptr);
-            const aslam::Camera& camera = *camera_ptr;
+          switch (input_resource_type) {
+            case backend::ResourceType::kRawDepthMap:
+            // Fall through intended.
+            case backend::ResourceType::kOptimizedDepthMap: {
+              CHECK(camera_ptr);
+              const aslam::Camera& camera = *camera_ptr;
 
-            cv::Mat depth_map;
-            if (!vi_map.getSensorResource(
-                    mission, input_resource_type, sensor_id, timestamp_ns,
-                    &depth_map)) {
-              LOG(FATAL) << "Cannot retrieve depth map resource at "
-                         << "timestamp " << timestamp_ns << "ns!";
-            }
+              cv::Mat depth_map;
+              if (!vi_map.getSensorResource(
+                      mission, input_resource_type, sensor_id, timestamp_ns,
+                      &depth_map)) {
+                LOG(FATAL) << "Cannot retrieve depth map resource at "
+                           << "timestamp " << timestamp_ns << "ns!";
+              }
 
-            // Check if there is a dedicated grayscale or color image for this
-            // depth map.
-            cv::Mat image;
-            if (vi_map.getSensorResource(
-                    mission, backend::ResourceType::kImageForDepthMap,
-                    sensor_id, timestamp_ns, &image)) {
-              VLOG(3) << "Found depth map with intensity information "
-                         "from the dedicated grayscale image.";
-            } else if (vi_map.getSensorResource(
-                           mission,
-                           backend::ResourceType::kColorImageForDepthMap,
-                           sensor_id, timestamp_ns, &image)) {
-              VLOG(3) << "Found depth map with RGB information "
-                      << "from the dedicated color image.";
-            } else {
-              VLOG(3)
-                  << "Found depth map without any color/intensity information.";
-            }
+              // Check if there is a dedicated grayscale or color image for this
+              // depth map.
+              cv::Mat image;
+              if (vi_map.getSensorResource(
+                      mission, backend::ResourceType::kImageForDepthMap,
+                      sensor_id, timestamp_ns, &image)) {
+                VLOG(3) << "Found depth map with intensity information "
+                           "from the dedicated grayscale image.";
+              } else if (vi_map.getSensorResource(
+                             mission,
+                             backend::ResourceType::kColorImageForDepthMap,
+                             sensor_id, timestamp_ns, &image)) {
+                VLOG(3) << "Found depth map with RGB information "
+                        << "from the dedicated color image.";
+              } else {
+                VLOG(3) << "Found depth map without any color/intensity "
+                           "information.";
+              }
 
-            // Integrate with or without intensity information.
-            integration_function(T_G_S, depth_map, image, camera);
-          } break;
-          default:
-            LOG(FATAL) << "This depth type is not supported! type: "
-                       << backend::ResourceTypeNames[static_cast<int>(
-                              input_resource_type)];
+              // Integrate with or without intensity information.
+              integration_function(T_G_C_vec, depth_map, image, camera);
+            } break;
+            default:
+              LOG(FATAL) << "This depth type is not supported! type: "
+                         << backend::ResourceTypeNames[static_cast<int>(
+                                input_resource_type)];
+          }
         }
       }
     }
   }
+}
+
+template <>
+void integrateAllOptionalSensorDepthMapResourcesOfType(
+    const vi_map::MissionIdList& mission_ids,
+    const backend::ResourceType& input_resource_type,
+    const vi_map::VIMap& vi_map,
+    DepthMapIntegrationFunction integration_function) {
+  auto undistortion_integration_function =
+      [&integration_function](
+          const aslam::TransformationVector& T_G_C_vec,
+          const cv::Mat& depth_map, const cv::Mat& intensities,
+          const aslam::Camera& camera) {
+        CHECK_GE(T_G_C_vec.size(), 1u);
+        const aslam::Transformation& T_G_C = T_G_C_vec.at(0);
+        integration_function(T_G_C, depth_map, intensities, camera);
+      };
+  integrateAllOptionalSensorDepthMapResourcesOfTypeImpl(
+      mission_ids, input_resource_type, vi_map,
+      undistortion_integration_function);
+}
+
+template <>
+void integrateAllOptionalSensorDepthMapResourcesOfType(
+    const vi_map::MissionIdList& mission_ids,
+    const backend::ResourceType& input_resource_type,
+    const vi_map::VIMap& vi_map,
+    DepthMapUndistortionAndIntegrationFunction integration_function) {
+  integrateAllOptionalSensorDepthMapResourcesOfTypeImpl(
+      mission_ids, input_resource_type, vi_map, integration_function);
 }
 
 }  // namespace depth_integration
