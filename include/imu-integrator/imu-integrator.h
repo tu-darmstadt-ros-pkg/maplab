@@ -48,6 +48,14 @@ class ImuIntegratorRK4 {
       Eigen::Matrix<ScalarType, kErrorStateSize,
                     kErrorStateSize>* next_cov) const;
 
+  template <typename ScalarType>
+  inline void interpolateImuReadings(
+      const Eigen::Matrix<ScalarType, 2 * kImuReadingSize, 1>& imu_readings,
+      const ScalarType delta_time_seconds,
+      const ScalarType increment_step_size_seconds,
+      Eigen::Matrix<ScalarType, kImuReadingSize, 1>* interpolated_imu_readings)
+  const;
+
  private:
   template <typename ScalarType>
   inline void getStateDerivativeRungeKutta(
@@ -69,14 +77,6 @@ class ImuIntegratorRK4 {
           cov_derivative,
       Eigen::Matrix<ScalarType, kErrorStateSize, kErrorStateSize>*
           transition_derivative) const;
-
-  template <typename ScalarType>
-  inline void interpolateImuReadings(
-      const Eigen::Matrix<ScalarType, 2 * kImuReadingSize, 1>& imu_readings,
-      const ScalarType delta_time_seconds,
-      const ScalarType increment_step_size_seconds,
-      Eigen::Matrix<ScalarType, kImuReadingSize, 1>* interpolated_imu_readings)
-      const;
 
   template <typename ScalarType>
   inline void gyroOmegaJPL(
