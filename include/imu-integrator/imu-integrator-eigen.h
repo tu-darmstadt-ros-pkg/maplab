@@ -2,8 +2,6 @@
 #define IMU_INTEGRATOR_IMU_INTEGRATOR_EIGEN_H_
 
 #include <Eigen/Core>
-#include <maplab-common/pose_types.h>
-
 #include "imu-integrator/common.h"
 
 namespace imu_integrator {

@@ -6,10 +6,12 @@
 #include <limits>
 
 #include <glog/logging.h>
-#include <maplab-common/geometry.h>
-#include <maplab-common/quaternion-math.h>
+//#include <maplab-common/geometry.h>
+//#include <maplab-common/quaternion-math.h>
 
 #include "imu-integrator/common.h"
+
+
 
 namespace imu_integrator {
 
